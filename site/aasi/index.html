@@ -65,7 +65,7 @@
     <section id="chart-aasi-sec" aria-labelledby="chart-aasi-h">
       <div class="panel">
         <div class="chart-head">
-          <h3 id="chart-aasi-h">28일 변화율과 밴드</h3>
+          <h3 id="chart-aasi-h">BTC 가격, 28일 변화율과 밴드</h3>
           <div class="ranges" role="group" aria-label="기간 선택">
             <button type="button" data-range="182">6개월</button>
             <button type="button" data-range="365" aria-pressed="true">1년</button>
@@ -75,28 +75,17 @@
         </div>
         <div class="chart" id="chart-aasi"></div>
         <div class="legend" id="legend-aasi">
+          <span><span class="sw" style="border-color:var(--series-price)"></span>BTC 가격 (오른쪽, 로그 눈금)</span>
           <span><span class="sw" style="border-color:var(--series-price-chg)"></span>가격 28일 변화율</span>
           <span><span class="sw dash" style="border-color:var(--band-upper)"></span>상단 밴드 (과열 기준)</span>
           <span><span class="sw dash" style="border-color:var(--band-lower)"></span>하단 밴드 (과매도 기준)</span>
           <span><span class="sw" style="border-color:var(--series-aa);border-top-width:1px"></span>활성 주소 28일 변화율</span>
-        </div>
-        <p class="view-hint" id="view-hint" aria-live="polite"></p>
-        <p class="note">주황색 선이 빨간 점선 위로 올라가면 과열, 초록 점선 아래로 내려가면 과매도 구간입니다.<br>
-          차트 안을 더블클릭하면 선택한 기간과 전체 기간이 번갈아 표시됩니다. 더블클릭의 두 번째 클릭을 누른 채로 좌우로 끌면 확대할 구간을 고를 수 있고, 손을 떼면 확대됩니다. 확대한 상태에서 더블클릭하면 확대 전 화면으로 돌아갑니다. 두 차트는 함께 움직입니다.</p>
-      </div>
-    </section>
-
-    <section id="chart-price-sec" aria-labelledby="chart-price-h">
-      <div class="panel">
-        <div class="chart-head">
-          <h3 id="chart-price-h">BTC 가격과 밴드 이탈 시점</h3>
-        </div>
-        <div class="chart" id="chart-price"></div>
-        <div class="legend">
-          <span><span class="sw" style="border-color:var(--series-price)"></span>BTC 가격 (로그 눈금)</span>
           <span><span class="dot" style="background:var(--band-upper)"></span>과열 구간 진입</span>
           <span><span class="dot" style="background:var(--band-lower)"></span>과매도 구간 진입</span>
         </div>
+        <p class="view-hint" id="view-hint" aria-live="polite"></p>
+        <p class="note">주황색 선이 빨간 점선 위로 올라가면 과열, 초록 점선 아래로 내려가면 과매도 구간입니다. 위쪽 선은 BTC 가격이며 오른쪽 로그 눈금을 따릅니다.<br>
+          차트 안을 좌우로 끌면 그 구간이 확대됩니다. 더블클릭하면 선택한 기간과 전체 기간이 번갈아 표시되고, 확대한 상태에서 더블클릭하면 확대 전 화면으로 돌아갑니다.</p>
       </div>
     </section>
 
