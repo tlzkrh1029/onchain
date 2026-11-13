@@ -256,9 +256,10 @@
     applyView();
   }
 
-  // Double-click: toggle view. Double-click whose second press is held and dragged:
-  // pick a range, release to zoom. A single press-and-drag does nothing.
-  const DBL_MS = 450, DBL_PX = 14, DRAG_PX = 6;
+  // Drag (single press, or the second press of a double-click): pick a range, release to zoom.
+  // Double-click without dragging: toggle selected period <-> full history,
+  // or, while zoomed, go back to the view the zoom started from.
+  const DBL_MS = 500, DBL_PX = 16, DRAG_PX = 6;
   let lastClick = { t: 0, x: 0, y: 0 };
 
   function attachGestures(u) {
@@ -275,16 +276,14 @@
       const p = pos(e);
       const second = e.timeStamp - lastClick.t < DBL_MS && Math.abs(p.x - lastClick.x) < DBL_PX && Math.abs(p.y - lastClick.y) < DBL_PX;
       down = { x: p.x, y: p.y, second, moved: false };
-      if (second) {
-        e.preventDefault();
-        over.setPointerCapture(e.pointerId);
-      }
+      e.preventDefault(); // no text selection while dragging
+      over.setPointerCapture(e.pointerId);
     });
     over.addEventListener("pointermove", (e) => {
       if (!down) return;
       const p = pos(e);
       if (Math.abs(p.x - down.x) > DRAG_PX) down.moved = true;
-      if (down.second && down.moved) {
+      if (down.moved) {
         const left = Math.min(down.x, p.x), width = Math.abs(p.x - down.x);
         charts.forEach((c) => c.setSelect({ left, width, top: 0, height: c.over.clientHeight }, false));
       }
@@ -296,19 +295,38 @@
       clearSel();
       if (cancelled) return;
       const p = pos(e);
-      if (d.second) {
+      if (d.moved) {
         lastClick.t = 0;
-        if (d.moved) zoomTo(u.posToVal(Math.min(d.x, p.x), "x"), u.posToVal(Math.max(d.x, p.x), "x"));
-        else onDoubleClick();
-      } else if (!d.moved) {
-        lastClick = { t: e.timeStamp, x: d.x, y: d.y };
+        zoomTo(u.posToVal(Math.min(d.x, p.x), "x"), u.posToVal(Math.max(d.x, p.x), "x"));
+      } else if (d.second) {
+        lastClick.t = 0;
+        onDoubleClick();
       } else {
-        lastClick.t = 0;
+        lastClick = { t: e.timeStamp, x: d.x, y: d.y };
       }
     };
     over.addEventListener("pointerup", (e) => finish(e, false));
     over.addEventListener("pointercancel", (e) => finish(e, true));
   }
+
+  // log ticks with round values: wide ranges 1-3-10, medium 1-2-5, narrow finer steps
+  function logSplits(min, max, maxTicks) {
+    const decades = Math.log10(max / min);
+    const pick = (mants) => {
+      const out = [];
+      for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++)
+        for (const m of mants) {
+          const v = m * Math.pow(10, e);
+          if (v >= min && v <= max) out.push(v);
+        }
+      return out;
+    };
+    let out = pick(decades > 2.2 ? [1] : decades > 0.9 ? [1, 2, 5] : [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8]);
+    if (out.length < 3 && decades > 2.2) out = pick([1, 3]);
+    const step = Math.ceil(out.length / maxTicks);
+    return out.filter((_, i) => i % step === 0);
+  }
+  const usdShort = (v) => (v >= 1e6 ? "$" + +(v / 1e6).toFixed(1) + "M" : v >= 1000 ? "$" + nf0.format(v / 1000) + "k" : "$" + nf0.format(v));
 
   function buildCharts() {
     charts.forEach((c) => c.destroy());
@@ -317,108 +335,108 @@
     const C = {
       text: cssVar("--text-secondary"),
       grid: cssVar("--grid"),
+      zero: cssVar("--grid-strong"),
       pc: cssVar("--series-price-chg"),
       aa: cssVar("--series-aa"),
       up: cssVar("--band-upper"),
       dn: cssVar("--band-lower"),
       price: cssVar("--series-price"),
       surface: cssVar("--surface-1"),
-      muted: cssVar("--text-muted"),
     };
+    const box = $("chart-aasi");
     const narrow = () => window.innerWidth < 560;
-    const aasiH = () => (narrow() ? 280 : Math.round(Math.min(480, Math.max(360, box1.clientWidth * 0.32))));
-    const priceH = () => (narrow() ? 220 : Math.round(Math.min(340, Math.max(260, box2.clientWidth * 0.22))));
-    const box1 = $("chart-aasi"), box2 = $("chart-price");
-    const axisBase = { stroke: C.text, grid: { stroke: C.grid, width: 1 }, ticks: { show: false }, font: "12px sans-serif" };
-    const xAxis = Object.assign({}, axisBase, { values: xValues, space: 64 });
-    const cursor = {
-      sync: { key: "aasi" },
-      drag: { x: false, y: false, setScale: false },
-      points: { size: 7 },
-      bind: { dblclick: () => () => null }, // handled by attachGestures
-    };
+    const height = () => (narrow() ? 380 : Math.round(Math.min(760, Math.max(540, box.clientWidth * 0.36))));
+    const axisBase = { stroke: C.text, ticks: { show: false }, font: "12px sans-serif", grid: { show: false } };
 
-    // 1) AASI
-    const u1 = new uPlot(
-      {
-        width: box1.clientWidth,
-        height: aasiH(),
-        legend: { show: false },
-        tzDate: utc,
-        cursor,
-        scales: { x: { time: true } },
-        axes: [xAxis, Object.assign({}, axisBase, { size: 48, values: (u, vs) => vs.map((v) => Math.round(v * 100) + "%") })],
-        series: [
-          {},
-          { label: "활성 주소 28일 변화율", stroke: C.aa, width: 1 },
-          { label: "상단 밴드", stroke: C.up, width: 1.5, dash: [5, 4] },
-          { label: "하단 밴드", stroke: C.dn, width: 1.5, dash: [5, 4] },
-          { label: "가격 28일 변화율", stroke: C.pc, width: 2 },
-        ],
-        plugins: [
-          zeroLine(C.muted),
-          tooltipPlugin((tip, i) => {
-            tip.append(el("div", "t", ymd(X[i])));
-            const z = zoneOf(S.px_chg[i], S.upper[i], S.lower[i]);
-            tipRow(tip, { color: C.pc }, "가격 28일 변화율", pct(S.px_chg[i]));
-            tipRow(tip, { color: C.up, dash: true }, "상단 밴드", pct(S.upper[i]));
-            tipRow(tip, { color: C.dn, dash: true }, "하단 밴드", pct(S.lower[i]));
-            tipRow(tip, { color: C.aa }, "활성 주소 28일", pct(S.aa_chg[i]));
-            if (z) tipRow(tip, null, "구간", ZONE[z].label);
-          }),
-        ],
-      },
-      [X, S.aa_chg, S.upper, S.lower, S.px_chg],
-      box1
-    );
-
-    // 2) price + entries
+    // signal markers sit on the price line
     const over = S.price.map(() => null), under = S.price.map(() => null);
     const idx = new Map(X.map((x, i) => [ymd(x), i]));
     for (const e of D.entries) {
       const i = idx.get(e.date);
       if (i != null) (e.zone === "over" ? over : under)[i] = S.price[i];
     }
-    const pts = (color) => ({ show: true, size: 9, fill: color, stroke: C.surface, width: 1.5 });
-    const u2 = new uPlot(
+    const showPts = (u) => u.scales.x.max - u.scales.x.min <= 1100 * DAY; // too dense on longer views
+    const pts = (color) => ({ show: showPts, size: 8, fill: color, stroke: C.surface, width: 1.5 });
+
+    const PCT_TOP = 0.6, PRICE_BOTTOM = 0.52;
+    // Layout like the original chart: the change-rate lines fill the lower part,
+    // the BTC price (log) the upper part. Ranges follow the visible period.
+    const pctRange = (u, min, max) => {
+      if (min == null || max == null) return [-0.5, 1];
+      const R = Math.max(max - min, 0.05) / PCT_TOP;
+      const lo = min - 0.03 * R;
+      return [lo, lo + R];
+    };
+    const priceRange = (u, min, max) => {
+      if (!(min > 0) || !(max > 0)) return [1, 10];
+      const lmin = Math.log10(min), lmax = Math.log10(max);
+      const R = Math.max(lmax - lmin, 0.15) / (0.95 - PRICE_BOTTOM);
+      const lo = lmin - PRICE_BOTTOM * R;
+      return [Math.pow(10, lo), Math.pow(10, lo + R)];
+    };
+
+    const u = new uPlot(
       {
-        width: box2.clientWidth,
-        height: priceH(),
+        width: box.clientWidth,
+        height: height(),
         legend: { show: false },
         tzDate: utc,
-        cursor,
-        scales: { x: { time: true }, y: { distr: 3, range: (u, min, max) => [min / 1.12, max * 1.12] } },
+        cursor: { drag: { x: false, y: false, setScale: false }, points: { size: 7 }, bind: { dblclick: () => () => null } },
+        scales: {
+          x: { time: true },
+          y: { range: pctRange },
+          price: { distr: 3, range: priceRange },
+        },
         axes: [
-          xAxis,
+          Object.assign({}, axisBase, { values: xValues, space: 90 }),
           Object.assign({}, axisBase, {
-            size: 56,
-            filter: (u, splits) => splits, // keep every label (uPlot thins log-axis labels by default)
+            scale: "y",
+            size: 52,
+            space: 70,
+            grid: { show: true, stroke: C.grid, width: 1 },
+            // ticks and grid only in the lower part where the change-rate lines live
             splits: (u, ax, min, max) => {
-              // round prices on a log axis: wide ranges get 1-3-10 steps, narrow ranges finer steps
-              const decades = Math.log10(max / min);
-              const mants = decades > 2.2 ? [1, 3] : decades > 0.9 ? [1, 2, 5] : [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8];
+              const lim = min + PCT_TOP * (max - min);
+              const want = narrow() ? 4 : 6;
+              const step = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2].find((s) => (lim - min) / s <= want) || 5;
               const out = [];
-              for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++)
-                for (const m of mants) {
-                  const v = m * Math.pow(10, e);
-                  if (v >= min && v <= max) out.push(v);
-                }
-              const step = Math.ceil(out.length / (narrow() ? 4 : 7));
-              return out.filter((_, i) => i % step === 0);
+              for (let v = Math.ceil(min / step) * step; v <= lim + 1e-9; v += step) out.push(+v.toFixed(4));
+              return out;
             },
-            values: (u, vs) => vs.map((v) => (v == null ? "" : v >= 1e6 ? "$" + +(v / 1e6).toFixed(1) + "M" : v >= 1000 ? "$" + nf0.format(v / 1000) + "k" : "$" + nf0.format(v))),
+            values: (u, vs) => vs.map((v) => Math.round(v * 100) + "%"),
+          }),
+          Object.assign({}, axisBase, {
+            scale: "price",
+            side: 1,
+            size: 60,
+            filter: (u, splits) => splits, // keep every label (uPlot thins log-axis labels by default)
+            // label only the upper band of the chart where the price line lives
+            splits: (u, ax, min, max) => {
+              const lmin = Math.log10(min), lmax = Math.log10(max);
+              return logSplits(Math.pow(10, lmin + (PRICE_BOTTOM - 0.06) * (lmax - lmin)), max, narrow() ? 4 : 5);
+            },
+            values: (u, vs) => vs.map((v) => (v == null ? "" : usdShort(v))),
           }),
         ],
         series: [
           {},
-          { label: "BTC 가격", stroke: C.price, width: 1.5 },
-          { label: "과열 진입", stroke: C.up, paths: () => null, points: pts(C.up) },
-          { label: "과매도 진입", stroke: C.dn, paths: () => null, points: pts(C.dn) },
+          { label: "활성 주소 28일 변화율", scale: "y", stroke: C.aa, width: 1 },
+          { label: "BTC 가격", scale: "price", stroke: C.price, width: 1.6 },
+          { label: "상단 밴드", scale: "y", stroke: C.up, width: 1.5, dash: [5, 4] },
+          { label: "하단 밴드", scale: "y", stroke: C.dn, width: 1.5, dash: [5, 4] },
+          { label: "가격 28일 변화율", scale: "y", stroke: C.pc, width: 2 },
+          { label: "과열 진입", scale: "price", stroke: C.up, paths: () => null, points: pts(C.up) },
+          { label: "과매도 진입", scale: "price", stroke: C.dn, paths: () => null, points: pts(C.dn) },
         ],
         plugins: [
+          zeroLine(C.zero),
           tooltipPlugin((tip, i) => {
             tip.append(el("div", "t", ymd(X[i])));
             tipRow(tip, { color: C.price }, "BTC 가격", usd(S.price[i]));
+            tipRow(tip, { color: C.pc }, "가격 28일 변화율", pct(S.px_chg[i]));
+            tipRow(tip, { color: C.up, dash: true }, "상단 밴드", pct(S.upper[i]));
+            tipRow(tip, { color: C.dn, dash: true }, "하단 밴드", pct(S.lower[i]));
+            tipRow(tip, { color: C.aa }, "활성 주소 28일", pct(S.aa_chg[i]));
             const z = zoneOf(S.px_chg[i], S.upper[i], S.lower[i]);
             if (z) tipRow(tip, null, "구간", ZONE[z].label);
             if (over[i] != null) tipRow(tip, null, "신호", "과열 구간 진입");
@@ -426,20 +444,17 @@
           }),
         ],
       },
-      [X, S.price, over, under],
-      box2
+      [X, S.aa_chg, S.price, S.upper, S.lower, S.px_chg, over, under],
+      box
     );
 
-    charts = [u1, u2];
+    charts = [u];
     charts.forEach(attachGestures);
     applyView();
 
     if (ro) ro.disconnect();
-    ro = new ResizeObserver(() => {
-      u1.setSize({ width: box1.clientWidth, height: aasiH() });
-      u2.setSize({ width: box2.clientWidth, height: priceH() });
-    });
-    ro.observe(box1);
+    ro = new ResizeObserver(() => u.setSize({ width: box.clientWidth, height: height() }));
+    ro.observe(box);
   }
 
   function setupRanges() {
