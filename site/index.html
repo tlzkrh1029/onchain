@@ -9,63 +9,86 @@
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <nav class="top">
-    <div class="wrap">
-      <a class="brand" href="./">onchain</a>
-      <span class="spacer"></span>
-      <a class="repo" href="https://github.com/tlzkrh1029/onchain">GitHub</a>
-    </div>
-  </nav>
+  <header class="top">
+    <button class="menu-btn" id="menu-btn" type="button" aria-label="지표 목록 열고 닫기">☰</button>
+    <a class="brand" href="./">onchain</a>
+    <span class="spacer"></span>
+    <a class="repo" href="https://github.com/tlzkrh1029/onchain">GitHub</a>
+  </header>
 
-  <main class="wrap">
-    <header class="hero">
-      <h1>온체인 지표 모음</h1>
-      <p class="lead">공개된 온체인 원시 데이터로 비트코인 지표를 직접 계산하고, 계산 원리와 함께 정리했습니다. 모든 지표는 GitHub Actions가 매일 자동으로 다시 계산합니다.</p>
-    </header>
+  <div class="layout">
+    <aside class="side" id="side"></aside>
+    <main class="main">
+      <header class="hero">
+        <h1>온체인 지표 모음</h1>
+        <p class="lead">공개된 온체인 원시 데이터로 비트코인 지표를 직접 계산하고, 계산 원리와 함께 정리했습니다. 모든 지표는 GitHub Actions가 매일 자동으로 다시 계산합니다.</p>
+      </header>
 
-    <section aria-labelledby="list-h">
-      <h2 id="list-h">지표</h2>
-      <div class="ind-list">
-        <a class="ind" href="aasi/" id="ind-aasi">
-          <h3>AASI · 활성 주소 심리 지표</h3>
-          <p>활성 주소 수와 가격의 28일 변화율을 비교해 단기 과열과 과매도를 판단합니다.</p>
-          <div class="now" id="aasi-now">현재 값을 불러오는 중입니다.</div>
-        </a>
-      </div>
-    </section>
-  </main>
+      <div id="home-groups"></div>
 
-  <footer>
-    <div class="wrap">
-      <p>데이터: <a href="https://coinmetrics.io/">Coin Metrics</a> Community Data (<a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>).</p>
-      <p>이 페이지는 정보 제공을 위한 것이며 투자 조언이 아닙니다.</p>
-    </div>
-  </footer>
+      <footer>
+        <p>데이터: <a href="https://coinmetrics.io/">Coin Metrics</a> Community Data (<a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>).</p>
+        <p>이 페이지는 정보 제공을 위한 것이며 투자 조언이 아닙니다.</p>
+      </footer>
+    </main>
+  </div>
 
+  <script src="assets/nav.js" data-root="./"></script>
   <script>
     (function () {
+      "use strict";
+      var el = function (tag, cls, text) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text != null) e.textContent = text;
+        return e;
+      };
       var ZONE = { over: ["▲", "과열"], under: ["▼", "과매도"], in: ["●", "중립"] };
       var pct = function (v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toFixed(1) + "%"; };
-      fetch("data/aasi.json", { cache: "no-cache" })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          var L = d.latest, box = document.getElementById("aasi-now");
-          box.textContent = "";
-          var tag = document.createElement("span");
-          tag.className = "zone-tag " + L.zone;
-          var ico = document.createElement("span");
-          ico.className = "ico";
-          ico.textContent = ZONE[L.zone][0];
-          var lab = document.createElement("span");
-          lab.textContent = ZONE[L.zone][1];
-          tag.append(ico, lab);
-          box.append(tag, document.createTextNode(
-            "  ·  " + L.date + " 기준 가격 28일 변화율 " + pct(L.px_chg) + ", 밴드 " + pct(L.lower) + " ~ " + pct(L.upper)
-          ));
-        })
-        .catch(function () {
-          document.getElementById("aasi-now").textContent = "현재 값을 불러오지 못했습니다.";
+
+      // status line renderers, keyed by the "status" field of a nav item
+      var STATUS = {
+        aasi: function (box) {
+          fetch("data/aasi.json", { cache: "no-cache" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              var L = d.latest;
+              box.textContent = "";
+              var tag = el("span", "zone-tag " + L.zone);
+              tag.append(el("span", "ico", ZONE[L.zone][0]), el("span", null, ZONE[L.zone][1]));
+              box.append(tag, document.createTextNode(
+                "  ·  " + L.date + " 기준 가격 28일 변화율 " + pct(L.px_chg) + ", 밴드 " + pct(L.lower) + " ~ " + pct(L.upper)
+              ));
+            })
+            .catch(function () { box.textContent = "현재 값을 불러오지 못했습니다."; });
+        },
+      };
+
+      // one section per sidebar group, but each indicator only once (in its first group)
+      var seen = new Set();
+      var host = document.getElementById("home-groups");
+      (window.ONCHAIN_NAV || []).forEach(function (g) {
+        var items = g.items.filter(function (it) { return !seen.has(it.path); });
+        if (!items.length) return;
+        var sec = el("section", "home-group");
+        sec.append(el("h2", null, g.title));
+        var list = el("div", "ind-list");
+        items.forEach(function (it) {
+          seen.add(it.path);
+          var a = el("a", "ind");
+          a.href = it.path;
+          a.append(el("h3", null, it.name));
+          if (it.summary) a.append(el("p", null, it.summary));
+          if (it.status && STATUS[it.status]) {
+            var now = el("div", "now", "현재 값을 불러오는 중입니다.");
+            a.append(now);
+            STATUS[it.status](now);
+          }
+          list.append(a);
         });
+        sec.append(list);
+        host.append(sec);
+      });
     })();
   </script>
 </body>

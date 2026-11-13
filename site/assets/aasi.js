@@ -37,7 +37,10 @@
   let X = []; // unix seconds
   let charts = [];
   let ro = null;
-  let currentRange = "365";
+  // x-axis view: "home" = selected period (default 1 year), "full" = whole history,
+  // "zoom" = range picked with double-click + drag. Double-click toggles home <-> full,
+  // or leaves a zoom back to the view it started from.
+  const view = { mode: "home", homeKey: "365", prev: "home", zoom: null };
 
   fetch("../data/aasi.json", { cache: "no-cache" })
     .then((r) => {
@@ -227,16 +230,84 @@
   function rangeFor(key) {
     const last = X[X.length - 1];
     if (key === "all") return { min: X[0], max: last };
-    return { min: last - Number(key) * DAY, max: last };
+    return { min: Math.max(X[0], last - Number(key) * DAY), max: last };
   }
 
-  let syncing = false;
-  function syncX(u) {
-    if (syncing) return;
-    syncing = true;
-    const { min, max } = u.scales.x;
-    charts.forEach((c) => c !== u && c.setScale("x", { min, max }));
-    syncing = false;
+  function applyView() {
+    const r = view.mode === "zoom" ? view.zoom : rangeFor(view.mode === "full" ? "all" : view.homeKey);
+    charts.forEach((c) => c.setScale("x", r));
+    const pressed = view.mode === "full" ? "all" : view.mode === "home" ? view.homeKey : null;
+    document.querySelectorAll(".ranges button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.range === pressed)));
+    const hint = $("view-hint");
+    if (hint) hint.textContent = view.mode === "zoom" ? "확대 중입니다. 더블클릭하면 확대 전 화면으로 돌아갑니다." : "";
+  }
+
+  function onDoubleClick() {
+    if (view.mode === "zoom") view.mode = view.prev;
+    else view.mode = view.mode === "home" ? "full" : "home";
+    applyView();
+  }
+
+  function zoomTo(min, max) {
+    if (max - min < 3 * DAY) return; // too narrow to be useful
+    if (view.mode !== "zoom") view.prev = view.mode;
+    view.mode = "zoom";
+    view.zoom = { min, max };
+    applyView();
+  }
+
+  // Double-click: toggle view. Double-click whose second press is held and dragged:
+  // pick a range, release to zoom. A single press-and-drag does nothing.
+  const DBL_MS = 450, DBL_PX = 14, DRAG_PX = 6;
+  let lastClick = { t: 0, x: 0, y: 0 };
+
+  function attachGestures(u) {
+    const over = u.over;
+    let down = null;
+    const pos = (e) => {
+      const r = over.getBoundingClientRect();
+      return { x: Math.min(Math.max(e.clientX - r.left, 0), over.clientWidth), y: e.clientY - r.top };
+    };
+    const clearSel = () => charts.forEach((c) => c.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false));
+
+    over.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const p = pos(e);
+      const second = e.timeStamp - lastClick.t < DBL_MS && Math.abs(p.x - lastClick.x) < DBL_PX && Math.abs(p.y - lastClick.y) < DBL_PX;
+      down = { x: p.x, y: p.y, second, moved: false };
+      if (second) {
+        e.preventDefault();
+        over.setPointerCapture(e.pointerId);
+      }
+    });
+    over.addEventListener("pointermove", (e) => {
+      if (!down) return;
+      const p = pos(e);
+      if (Math.abs(p.x - down.x) > DRAG_PX) down.moved = true;
+      if (down.second && down.moved) {
+        const left = Math.min(down.x, p.x), width = Math.abs(p.x - down.x);
+        charts.forEach((c) => c.setSelect({ left, width, top: 0, height: c.over.clientHeight }, false));
+      }
+    });
+    const finish = (e, cancelled) => {
+      if (!down) return;
+      const d = down;
+      down = null;
+      clearSel();
+      if (cancelled) return;
+      const p = pos(e);
+      if (d.second) {
+        lastClick.t = 0;
+        if (d.moved) zoomTo(u.posToVal(Math.min(d.x, p.x), "x"), u.posToVal(Math.max(d.x, p.x), "x"));
+        else onDoubleClick();
+      } else if (!d.moved) {
+        lastClick = { t: e.timeStamp, x: d.x, y: d.y };
+      } else {
+        lastClick.t = 0;
+      }
+    };
+    over.addEventListener("pointerup", (e) => finish(e, false));
+    over.addEventListener("pointercancel", (e) => finish(e, true));
   }
 
   function buildCharts() {
@@ -255,22 +326,23 @@
       muted: cssVar("--text-muted"),
     };
     const narrow = () => window.innerWidth < 560;
+    const aasiH = () => (narrow() ? 280 : Math.round(Math.min(480, Math.max(360, box1.clientWidth * 0.32))));
+    const priceH = () => (narrow() ? 220 : Math.round(Math.min(340, Math.max(260, box2.clientWidth * 0.22))));
+    const box1 = $("chart-aasi"), box2 = $("chart-price");
     const axisBase = { stroke: C.text, grid: { stroke: C.grid, width: 1 }, ticks: { show: false }, font: "12px sans-serif" };
     const xAxis = Object.assign({}, axisBase, { values: xValues, space: 64 });
     const cursor = {
       sync: { key: "aasi" },
-      drag: { x: true, y: false },
+      drag: { x: false, y: false, setScale: false },
       points: { size: 7 },
-      // double-click returns to the selected range instead of the full history
-      bind: { dblclick: () => () => { applyRange(currentRange); return null; } },
+      bind: { dblclick: () => () => null }, // handled by attachGestures
     };
 
     // 1) AASI
-    const box1 = $("chart-aasi");
     const u1 = new uPlot(
       {
         width: box1.clientWidth,
-        height: narrow() ? 270 : 360,
+        height: aasiH(),
         legend: { show: false },
         tzDate: utc,
         cursor,
@@ -295,7 +367,6 @@
             if (z) tipRow(tip, null, "구간", ZONE[z].label);
           }),
         ],
-        hooks: { setScale: [(u, key) => key === "x" && syncX(u)] },
       },
       [X, S.aa_chg, S.upper, S.lower, S.px_chg],
       box1
@@ -309,11 +380,10 @@
       if (i != null) (e.zone === "over" ? over : under)[i] = S.price[i];
     }
     const pts = (color) => ({ show: true, size: 9, fill: color, stroke: C.surface, width: 1.5 });
-    const box2 = $("chart-price");
     const u2 = new uPlot(
       {
         width: box2.clientWidth,
-        height: narrow() ? 220 : 270,
+        height: priceH(),
         legend: { show: false },
         tzDate: utc,
         cursor,
@@ -324,13 +394,16 @@
             size: 56,
             filter: (u, splits) => splits, // keep every label (uPlot thins log-axis labels by default)
             splits: (u, ax, min, max) => {
+              // round prices on a log axis: wide ranges get 1-3-10 steps, narrow ranges finer steps
+              const decades = Math.log10(max / min);
+              const mants = decades > 2.2 ? [1, 3] : decades > 0.9 ? [1, 2, 5] : [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8];
               const out = [];
               for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++)
-                for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8]) {
+                for (const m of mants) {
                   const v = m * Math.pow(10, e);
                   if (v >= min && v <= max) out.push(v);
                 }
-              const step = Math.ceil(out.length / (narrow() ? 4 : 6));
+              const step = Math.ceil(out.length / (narrow() ? 4 : 7));
               return out.filter((_, i) => i % step === 0);
             },
             values: (u, vs) => vs.map((v) => (v == null ? "" : v >= 1e6 ? "$" + +(v / 1e6).toFixed(1) + "M" : v >= 1000 ? "$" + nf0.format(v / 1000) + "k" : "$" + nf0.format(v))),
@@ -352,31 +425,34 @@
             if (under[i] != null) tipRow(tip, null, "신호", "과매도 구간 진입");
           }),
         ],
-        hooks: { setScale: [(u, key) => key === "x" && syncX(u)] },
       },
       [X, S.price, over, under],
       box2
     );
 
     charts = [u1, u2];
-    applyRange(currentRange);
+    charts.forEach(attachGestures);
+    applyView();
 
     if (ro) ro.disconnect();
     ro = new ResizeObserver(() => {
-      u1.setSize({ width: box1.clientWidth, height: narrow() ? 270 : 360 });
-      u2.setSize({ width: box2.clientWidth, height: narrow() ? 220 : 270 });
+      u1.setSize({ width: box1.clientWidth, height: aasiH() });
+      u2.setSize({ width: box2.clientWidth, height: priceH() });
     });
     ro.observe(box1);
   }
 
-  function applyRange(key) {
-    currentRange = key;
-    const r = rangeFor(key);
-    charts.forEach((c) => c.setScale("x", r));
-    document.querySelectorAll(".ranges button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.range === key)));
-  }
-
   function setupRanges() {
-    document.querySelectorAll(".ranges button").forEach((b) => b.addEventListener("click", () => applyRange(b.dataset.range)));
+    document.querySelectorAll(".ranges button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.range;
+        if (k === "all") view.mode = "full";
+        else {
+          view.homeKey = k;
+          view.mode = "home";
+        }
+        applyView();
+      })
+    );
   }
 })();

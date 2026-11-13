@@ -10,16 +10,17 @@
   <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-  <nav class="top">
-    <div class="wrap">
-      <a class="brand" href="../">onchain</a>
-      <span class="crumb">/ AASI</span>
-      <span class="spacer"></span>
-      <a class="repo" href="https://github.com/tlzkrh1029/onchain">GitHub</a>
-    </div>
-  </nav>
+  <header class="top">
+    <button class="menu-btn" id="menu-btn" type="button" aria-label="지표 목록 열고 닫기">☰</button>
+    <a class="brand" href="../">onchain</a>
+    <span class="crumb">/ AASI</span>
+    <span class="spacer"></span>
+    <a class="repo" href="https://github.com/tlzkrh1029/onchain">GitHub</a>
+  </header>
 
-  <main class="wrap">
+  <div class="layout">
+  <aside class="side" id="side"></aside>
+  <main class="main">
     <header class="hero">
       <h1>AASI · 활성 주소 심리 지표</h1>
       <p class="lead">
@@ -79,7 +80,9 @@
           <span><span class="sw dash" style="border-color:var(--band-lower)"></span>하단 밴드 (과매도 기준)</span>
           <span><span class="sw" style="border-color:var(--series-aa);border-top-width:1px"></span>활성 주소 28일 변화율</span>
         </div>
-        <p class="note">주황색 선이 빨간 점선 위로 올라가면 과열, 초록 점선 아래로 내려가면 과매도 구간입니다. 차트를 끌어서 구간을 확대할 수 있고, 두 번 누르면 원래대로 돌아갑니다.</p>
+        <p class="view-hint" id="view-hint" aria-live="polite"></p>
+        <p class="note">주황색 선이 빨간 점선 위로 올라가면 과열, 초록 점선 아래로 내려가면 과매도 구간입니다.<br>
+          차트 안을 더블클릭하면 선택한 기간과 전체 기간이 번갈아 표시됩니다. 더블클릭의 두 번째 클릭을 누른 채로 좌우로 끌면 확대할 구간을 고를 수 있고, 손을 떼면 확대됩니다. 확대한 상태에서 더블클릭하면 확대 전 화면으로 돌아갑니다. 두 차트는 함께 움직입니다.</p>
       </div>
     </section>
 
@@ -113,7 +116,7 @@
       <p class="note">과거 통계는 지표가 어떻게 움직여 왔는지 보여 줄 뿐이며, 앞으로의 가격 변화를 보장하지 않습니다.</p>
     </section>
 
-    <section id="method" aria-labelledby="method-h" class="prose">
+    <section id="method" aria-labelledby="method-h" class="prose readable">
       <h2 id="method-h">계산 원리</h2>
       <div class="panel">
         <p>AASI는 활성 주소 수(그날 비트코인을 보내거나 받은 고유 주소 수)와 가격, 두 가지 원시 데이터만으로 계산합니다. 아래 식은 Look Into Bitcoin 차트에 실린 데이터를 역산해 찾았으며, 사이트의 원시값을 넣으면 사이트의 지표값과 소수점 15자리 수준까지 일치합니다.</p>
@@ -158,7 +161,7 @@ lower  = m - 1.1 * sd                             # 과매도 기준</code></pre
       </div>
     </section>
 
-    <section id="verify" aria-labelledby="verify-h" class="prose">
+    <section id="verify" aria-labelledby="verify-h" class="prose readable">
       <h2 id="verify-h">원 지표와의 일치도</h2>
       <p class="sub">2026년 11월 13일에 Look Into Bitcoin의 AASI 값과 이 페이지의 재현값을 한 차례 비교한 결과입니다. 사이트의 데이터는 비교에만 사용했고, 이 페이지에는 싣지 않았습니다.</p>
       <div class="panel tbl-wrap">
@@ -179,16 +182,17 @@ lower  = m - 1.1 * sd                             # 과매도 기준</code></pre
       </div>
       <p>계산식은 같지만 활성 주소 원자료가 조금 달라서(원 지표는 Coin Metrics와 다른 제공처나 집계 기준을 쓰는 것으로 보입니다) 밴드에 작은 차이가 생깁니다. 이 차이는 가격 변화율이 밴드 경계 바로 근처에 있을 때만 판정을 바꿉니다.</p>
     </section>
-  </main>
-
-  <footer>
-    <div class="wrap">
+    <footer>
+    <div>
       <p>데이터: <a href="https://coinmetrics.io/">Coin Metrics</a> Community Data (<a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>). 원 지표: <a href="https://www.lookintobitcoin.com/charts/active-address-sentiment-indicator/">Look Into Bitcoin AASI</a>.</p>
       <p><a href="../data/aasi.csv">계산 결과 CSV 내려받기</a> · <a href="https://github.com/tlzkrh1029/onchain">소스 코드</a> · 차트: <a href="https://github.com/leeoniya/uPlot">uPlot</a> (MIT)</p>
       <p>이 페이지는 정보 제공을 위한 것이며 투자 조언이 아닙니다.</p>
     </div>
   </footer>
+  </main>
+  </div>
 
+  <script src="../assets/nav.js" data-root="../"></script>
   <script src="../vendor/uplot/uPlot.iife.min.js"></script>
   <script src="../assets/aasi.js"></script>
 </body>
