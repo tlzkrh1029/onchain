@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AASI · 활성 주소 심리 지표 | onchain</title>
+  <meta name="description" content="비트코인 활성 주소 수와 가격의 28일 변화율로 단기 과열·과매도를 판단하는 AASI를 Coin Metrics 공개 데이터로 재현해 매일 갱신합니다.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../vendor/uplot/uPlot.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <nav class="top">
+    <div class="wrap">
+      <a class="brand" href="../">onchain</a>
+      <span class="crumb">/ AASI</span>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/tlzkrh1029/onchain">GitHub</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <header class="hero">
+      <h1>AASI · 활성 주소 심리 지표</h1>
+      <p class="lead">
+        비트코인 가격이 네트워크 사용량보다 얼마나 빠르게 움직였는지를 측정해 단기 과열과 과매도를 판단하는 지표입니다.
+        Look Into Bitcoin이 제공하는 AASI(Active Address Sentiment Indicator)를 Coin Metrics 공개 데이터로 재현했고, 매일 자동으로 갱신합니다.
+      </p>
+      <div class="updated" id="updated">데이터를 불러오는 중입니다.</div>
+    </header>
+
+    <section id="status" aria-labelledby="status-h">
+      <h2 id="status-h">현재 상태</h2>
+      <p class="sub" id="status-sub">&nbsp;</p>
+      <div class="cards">
+        <div class="card" id="card-zone">
+          <div class="k">현재 구간</div>
+          <div class="v"><span class="zone-tag" id="zone-tag">—</span></div>
+          <div class="d" id="zone-desc">&nbsp;</div>
+        </div>
+        <div class="card">
+          <div class="k">가격 28일 변화율</div>
+          <div class="v" id="v-pc">—</div>
+          <div class="d" id="d-pc">&nbsp;</div>
+        </div>
+        <div class="card">
+          <div class="k">밴드 (하단 ~ 상단)</div>
+          <div class="v sm" id="v-band">—</div>
+          <div class="d">활성 주소 변화율의 28일 평균 −1.1σ ~ +1.8σ</div>
+        </div>
+        <div class="card">
+          <div class="k">활성 주소 28일 변화율</div>
+          <div class="v" id="v-aa">—</div>
+          <div class="d" id="d-aa">&nbsp;</div>
+        </div>
+        <div class="card">
+          <div class="k">최근 밴드 이탈</div>
+          <div class="v" id="v-last">—</div>
+          <div class="d" id="d-last">&nbsp;</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="chart-aasi-sec" aria-labelledby="chart-aasi-h">
+      <div class="panel">
+        <div class="chart-head">
+          <h3 id="chart-aasi-h">28일 변화율과 밴드</h3>
+          <div class="ranges" role="group" aria-label="기간 선택">
+            <button type="button" data-range="182">6개월</button>
+            <button type="button" data-range="365" aria-pressed="true">1년</button>
+            <button type="button" data-range="1095">3년</button>
+            <button type="button" data-range="all">전체</button>
+          </div>
+        </div>
+        <div class="chart" id="chart-aasi"></div>
+        <div class="legend" id="legend-aasi">
+          <span><span class="sw" style="border-color:var(--series-price-chg)"></span>가격 28일 변화율</span>
+          <span><span class="sw dash" style="border-color:var(--band-upper)"></span>상단 밴드 (과열 기준)</span>
+          <span><span class="sw dash" style="border-color:var(--band-lower)"></span>하단 밴드 (과매도 기준)</span>
+          <span><span class="sw" style="border-color:var(--series-aa);border-top-width:1px"></span>활성 주소 28일 변화율</span>
+        </div>
+        <p class="note">주황색 선이 빨간 점선 위로 올라가면 과열, 초록 점선 아래로 내려가면 과매도 구간입니다. 차트를 끌어서 구간을 확대할 수 있고, 두 번 누르면 원래대로 돌아갑니다.</p>
+      </div>
+    </section>
+
+    <section id="chart-price-sec" aria-labelledby="chart-price-h">
+      <div class="panel">
+        <div class="chart-head">
+          <h3 id="chart-price-h">BTC 가격과 밴드 이탈 시점</h3>
+        </div>
+        <div class="chart" id="chart-price"></div>
+        <div class="legend">
+          <span><span class="sw" style="border-color:var(--series-price)"></span>BTC 가격 (로그 눈금)</span>
+          <span><span class="dot" style="background:var(--band-upper)"></span>과열 구간 진입</span>
+          <span><span class="dot" style="background:var(--band-lower)"></span>과매도 구간 진입</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="signals" aria-labelledby="signals-h">
+      <h2 id="signals-h">밴드 이탈 신호 기록</h2>
+      <p class="sub">가격 변화율이 밴드 밖으로 나간 첫날을 신호로 기록했습니다. "이후 28일"은 신호 날짜의 가격과 28일 뒤 가격을 비교한 값이며, 아직 28일이 지나지 않은 신호는 비워 두었습니다.</p>
+      <div class="stats" id="sig-stats"></div>
+      <div class="panel tbl-wrap">
+        <table id="sig-table">
+          <thead>
+            <tr><th>날짜</th><th class="l">구간</th><th>신호 날짜 가격</th><th>가격 28일 변화율</th><th>이후 28일 가격 변화</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="note"><button type="button" id="sig-more" class="btn">전체 신호 보기</button></p>
+      </div>
+      <p class="note">과거 통계는 지표가 어떻게 움직여 왔는지 보여 줄 뿐이며, 앞으로의 가격 변화를 보장하지 않습니다.</p>
+    </section>
+
+    <section id="method" aria-labelledby="method-h" class="prose">
+      <h2 id="method-h">계산 원리</h2>
+      <div class="panel">
+        <p>AASI는 활성 주소 수(그날 비트코인을 보내거나 받은 고유 주소 수)와 가격, 두 가지 원시 데이터만으로 계산합니다. 아래 식은 Look Into Bitcoin 차트에 실린 데이터를 역산해 찾았으며, 사이트의 원시값을 넣으면 사이트의 지표값과 소수점 15자리 수준까지 일치합니다.</p>
+<pre><code>aa_chg = active_addresses.pct_change(28)          # 일별 활성 주소 수(평활하지 않은 값)의 28일 변화율
+px_chg = price.pct_change(28)                     # 가격의 28일 변화율
+m      = aa_chg.rolling(28, min_periods=2).mean()
+sd     = aa_chg.rolling(28, min_periods=2).std()  # 표본표준편차(ddof=1)
+upper  = m + 1.8 * sd                             # 과열 기준
+lower  = m - 1.1 * sd                             # 과매도 기준</code></pre>
+
+        <h3>무엇을 비교하는가</h3>
+        <p>밴드는 활성 주소 변화율이 최근 28일 동안 보인 평균과 변동 폭으로 만들어집니다. 즉 "최근 네트워크 사용량이 이 정도 속도로 변해 왔다"는 기준선을 세우고, 가격 변화율이 그 범위를 벗어났는지를 확인합니다.</p>
+        <ul>
+          <li><b>가격 변화율이 상단 밴드보다 높을 때</b>는 가격이 사용자 활동보다 훨씬 빠르게 오른 상태이므로 단기 과열로 해석합니다. 원 지표의 설명에 따르면 이 구간 이후에는 가격이 멈추거나 되돌림이 나오는 경우가 많습니다.</li>
+          <li><b>가격 변화율이 하단 밴드보다 낮을 때</b>는 가격이 사용자 활동보다 훨씬 빠르게 떨어진 상태이므로 과도한 비관으로 해석합니다. 원 지표의 설명에 따르면 이 구간 이후에는 반등이 자주 나옵니다.</li>
+          <li>대세 하락이나 강세장 막바지처럼 시장이 극단적일 때는 가격 변화율이 밴드를 크게 벗어난 채 오래 머물 수 있습니다.</li>
+          <li>다만 위의 "밴드 이탈 신호 기록"에서 신호 뒤 28일 동안의 가격 변화만 보면, 과열 신호 뒤의 하락과 과매도 신호 뒤의 상승이 뚜렷하게 나타나지 않습니다(2026년 11월 기준). 따라서 이 지표는 단독 매매 신호보다는 단기 과열과 과매도의 정도를 가늠하는 참고 지표로 보는 편이 적절합니다.</li>
+        </ul>
+
+        <h3>설계상 특징</h3>
+        <ul>
+          <li><b>28일 기간:</b> 28일은 정확히 4주이므로 항상 같은 요일끼리 비교하게 됩니다. 주말에 활성 주소가 줄어드는 요일 효과가 이 방식으로 상쇄됩니다.</li>
+          <li><b>원시값 사용:</b> 활성 주소 수는 7일 이동평균이 아니라 일별 값을 그대로 씁니다.</li>
+          <li><b>밴드의 기준:</b> 밴드는 가격 변동성이 아니라 활성 주소 변화율의 변동성만으로 만들어집니다.</li>
+          <li><b>비대칭 배수:</b> 상단은 1.8σ, 하단은 1.1σ입니다. 하단 밴드가 평균에 더 가깝기 때문에 과매도 신호가 과열 신호보다 쉽게 나옵니다. 원 지표는 이 배수를 설명하지 않으며, 과거 데이터에 맞춰 경험적으로 정한 값으로 보입니다.</li>
+          <li><b>시작 구간:</b> 원 지표는 2015년 1월 1일부터 값을 표시하며, 처음에는 값이 2개만 있어도 계산을 시작하고 28개가 모일 때까지 계산 창을 넓혀 갑니다. 이 페이지도 같은 방식으로 계산합니다.</li>
+        </ul>
+
+        <h3>데이터와 날짜 기준</h3>
+        <ul>
+          <li>활성 주소 수는 Coin Metrics의 <code>AdrActCnt</code>, 가격은 <code>PriceUSD</code>(하루가 끝나는 00:00 UTC 기준 가격)를 사용합니다.</li>
+          <li>날짜는 Look Into Bitcoin과 같은 기준으로 표시합니다. 예를 들어 이 페이지의 11월 13일 값은 11월 12일(UTC) 하루 동안의 활동과 11월 13일 00:00 UTC 가격으로 계산한 값이며, Coin Metrics 원자료에서는 11월 12일 값에 해당합니다.</li>
+          <li>매일 한 번(한국 시간 오후 4시 41분 무렵) GitHub Actions가 데이터를 받아 다시 계산합니다. Coin Metrics에 접속하지 못한 날은 직전에 저장한 데이터로 페이지를 만듭니다.</li>
+        </ul>
+
+        <h3>한계</h3>
+        <ul>
+          <li>활성 주소 수는 실제 사용자 수와 같지 않습니다. 거래소의 묶음 처리, 주소 재사용 방식의 변화, 대량의 소액 거래 같은 요인이 값을 흔들 수 있습니다.</li>
+          <li>일별 원시값을 쓰기 때문에 활성 주소 변화율은 하루 단위로 크게 출렁입니다. 같은 이유로 데이터 제공처가 다르면 이 값의 부호까지 달라질 수 있습니다.</li>
+          <li>이 지표는 몇 주 단위의 단기 방향을 보는 도구이며, 장기 사이클의 고점이나 저점을 판단하도록 만들어진 지표가 아닙니다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="verify" aria-labelledby="verify-h" class="prose">
+      <h2 id="verify-h">원 지표와의 일치도</h2>
+      <p class="sub">2026년 11월 13일에 Look Into Bitcoin의 AASI 값과 이 페이지의 재현값을 한 차례 비교한 결과입니다. 사이트의 데이터는 비교에만 사용했고, 이 페이지에는 싣지 않았습니다.</p>
+      <div class="panel tbl-wrap">
+        <table>
+          <thead><tr><th>항목</th><th>결과</th></tr></thead>
+          <tbody>
+            <tr><td>비교 기간</td><td>2015-01-01 ~ 2026-11-13 (4,335일)</td></tr>
+            <tr><td>과열·중립·과매도 판정 일치</td><td>98.4%</td></tr>
+            <tr><td>과열과 과매도가 반대로 나온 날</td><td>0일</td></tr>
+            <tr><td>판정이 엇갈린 날(69일)의 밴드 경계까지 거리</td><td>중앙값 0.26%p, 61일은 1%p 이내</td></tr>
+            <tr><td>원 지표의 밴드 이탈 신호 중 재현값에서도 ±1일 안에 나온 비율</td><td>94.7% (207회 중 196회)</td></tr>
+            <tr><td>일별 활성 주소 수 차이</td><td>중앙값 0.76%, 대부분 ±3% 이내</td></tr>
+            <tr><td>가격 28일 변화율의 평균 오차</td><td>0.05%p</td></tr>
+            <tr><td>활성 주소 28일 변화율의 평균 오차</td><td>1.4%p (상관계수 0.990)</td></tr>
+            <tr><td>상단 밴드 / 하단 밴드의 평균 오차</td><td>0.56%p / 0.29%p</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>계산식은 같지만 활성 주소 원자료가 조금 달라서(원 지표는 Coin Metrics와 다른 제공처나 집계 기준을 쓰는 것으로 보입니다) 밴드에 작은 차이가 생깁니다. 이 차이는 가격 변화율이 밴드 경계 바로 근처에 있을 때만 판정을 바꿉니다.</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>데이터: <a href="https://coinmetrics.io/">Coin Metrics</a> Community Data (<a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>). 원 지표: <a href="https://www.lookintobitcoin.com/charts/active-address-sentiment-indicator/">Look Into Bitcoin AASI</a>.</p>
+      <p><a href="../data/aasi.csv">계산 결과 CSV 내려받기</a> · <a href="https://github.com/tlzkrh1029/onchain">소스 코드</a> · 차트: <a href="https://github.com/leeoniya/uPlot">uPlot</a> (MIT)</p>
+      <p>이 페이지는 정보 제공을 위한 것이며 투자 조언이 아닙니다.</p>
+    </div>
+  </footer>
+
+  <script src="../vendor/uplot/uPlot.iife.min.js"></script>
+  <script src="../assets/aasi.js"></script>
+</body>
+</html>

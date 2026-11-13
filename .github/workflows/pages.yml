@@ -1,0 +1,68 @@
+name: Daily build & deploy (GitHub Pages)
+
+on:
+  schedule:
+    # 07:41 UTC = 16:41 KST. Coin Metrics has the previous UTC day's data by then.
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "data/**"
+      - "README.md"
+
+permissions:
+  contents: write   # commit the daily data snapshot
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Fetch data and build site
+        run: python build.py
+
+      # Committing the snapshot keeps a public history of the data and counts as repository
+      # activity, so GitHub does not disable this scheduled workflow after 60 idle days.
+      - name: Commit data snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "data unchanged"
+          else
+            git commit -m "data: daily update $(date -u +%F)"
+            git pull --rebase --autostash origin main
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
