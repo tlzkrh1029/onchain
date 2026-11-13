@@ -5,6 +5,7 @@
   --border: #e3e2dd;
   --grid: #f1f0ec;
   --grid-strong: #dddcd6;
+  --zoom-dim: rgba(40, 40, 36, 0.09);
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #77766f;
@@ -28,6 +29,7 @@
     --border: #2f2f2c;
     --grid: #222221;
     --grid-strong: #3a3a37;
+    --zoom-dim: rgba(0, 0, 0, 0.35);
     --text-primary: #f0efec;
     --text-secondary: #c3c2b7;
     --text-muted: #96958c;
@@ -230,7 +232,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
 
 footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 22px 0 40px; font-size: 13px; color: var(--text-muted); }
-.u-over { user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.u-over { user-select: none; -webkit-user-select: none; touch-action: pan-y; overflow: hidden; cursor: crosshair; }
+.u-over.dragging .tip { display: none !important; }
+/* zoom selection: four corner brackets, outside dimmed (like Plotly's box zoom) */
+.zsel { position: absolute; display: none; pointer-events: none; z-index: 5; box-shadow: 0 0 0 100000px var(--zoom-dim); }
+.zsel .c { position: absolute; width: 12px; height: 12px; border: 0 solid var(--text-primary); }
+.zsel .tl { left: -1px; top: -1px; border-left-width: 2px; border-top-width: 2px; }
+.zsel .tr { right: -1px; top: -1px; border-right-width: 2px; border-top-width: 2px; }
+.zsel .bl { left: -1px; bottom: -1px; border-left-width: 2px; border-bottom-width: 2px; }
+.zsel .br { right: -1px; bottom: -1px; border-right-width: 2px; border-bottom-width: 2px; }
+.zsel.kx { border-left: 1px solid var(--text-secondary); border-right: 1px solid var(--text-secondary); }
+.zsel.ky { border-top: 1px solid var(--text-secondary); border-bottom: 1px solid var(--text-secondary); }
 .view-hint { min-height: 1em; font-size: 13px; color: var(--accent); margin: 6px 0 0; }
 footer p { margin: 4px 0; }
 
