@@ -17,6 +17,7 @@
 build.py                    데이터 수집 → 지표 계산 → data/ 와 _site/ 생성
 indicators/aasi.py          AASI 계산식
 site/                       정적 페이지 원본 (HTML, CSS, JS, uPlot)
+site/assets/nav.js          왼쪽 지표 목록과 메인 페이지 카드의 목록 (지표 추가 시 여기에 한 줄 추가)
 data/coinmetrics_btc.csv    Coin Metrics 원자료 스냅샷 (매일 자동 커밋)
 data/aasi.csv               AASI 계산 결과 (매일 자동 커밋)
 .github/workflows/pages.yml 매일 07:41 UTC(16:41 KST) 빌드·배포
@@ -30,6 +31,18 @@ data/aasi.csv               AASI 계산 결과 (매일 자동 커밋)
 4. `_site/`가 GitHub Pages로 배포됩니다.
 
 처음 한 번은 저장소의 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 설정해야 합니다.
+
+## 지표 추가 방법
+
+1. `indicators/`에 계산 모듈을 만들고, `build.py`에서 결과를 `_site/data/<지표>.json`으로 쓰게 합니다.
+2. `site/<지표>/index.html` 페이지를 만듭니다. `site/aasi/index.html`의 상단 막대, 왼쪽 목록, 본문 구조를 그대로 쓰면 됩니다.
+3. `site/assets/nav.js`의 `NAV`에 항목을 추가합니다. 왼쪽 목록과 메인 페이지 카드에 함께 나타납니다. 같은 지표를 여러 분류에 넣을 때는 `{ ref: "<경로>/" }`로 적습니다.
+
+## 차트 조작
+
+- 더블클릭: 선택한 기간과 전체 기간을 번갈아 표시합니다.
+- 더블클릭의 두 번째 클릭을 누른 채로 끌기: 확대할 구간을 고르고, 손을 떼면 확대합니다.
+- 확대한 상태에서 더블클릭: 확대 전 화면으로 돌아갑니다.
 
 ## 로컬에서 실행
 
