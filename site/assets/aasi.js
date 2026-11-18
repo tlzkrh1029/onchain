@@ -37,28 +37,37 @@
   let X = []; // unix seconds
   let charts = [];
   let ro = null;
-  // x-axis view: "home" = selected period (default 1 year), "full" = whole history,
-  // "zoom" = range picked with double-click + drag. Double-click toggles home <-> full,
-  // or leaves a zoom back to the view it started from.
-  const view = { mode: "home", homeKey: "365", prev: "home", zoom: null };
+  // Zoom behaviour. The defaults are the chosen behaviour; a preview page may switch them.
+  //   dir : "auto" = horizontal drag zooms dates, vertical drag zooms values, diagonal drag zooms both
+  //         "box"  = every drag zooms dates and values
+  //   axes: "all"    = a value zoom rescales both the % axis and the price axis to the box
+  //         "region" = only the axis of the part of the chart the box covers
+  //   undo: "all"  = double-click leaves every zoom level at once; "step" = one level per double-click
+  const OPT = (window.AASI_OPTS = Object.assign({ dir: "auto", axes: "all", undo: "all" }, window.AASI_OPTS || {}));
 
-  fetch("../data/aasi.json", { cache: "no-cache" })
-    .then((r) => {
-      if (!r.ok) throw new Error(r.status);
-      return r.json();
-    })
+  // view: "home" = selected period (default 1 year), "full" = whole history, "zoom" = boxes picked by dragging.
+  // Double-click toggles home <-> full, or leaves the zoom back to the view it started from.
+  const view = { mode: "home", homeKey: "365", prev: "home", stack: [] };
+  const zoomNow = () => (view.mode === "zoom" && view.stack.length ? view.stack[view.stack.length - 1] : null);
+
+  (window.AASI_DATA
+    ? Promise.resolve(window.AASI_DATA)
+    : fetch("../data/aasi.json", { cache: "no-cache" }).then((r) => {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      }))
     .then((json) => {
       D = json;
       const s0 = parseDay(D.start);
       X = D.series.price.map((_, i) => s0 + i * DAY);
-      renderStatus();
-      renderSignals();
+      if ($("card-zone")) renderStatus();
+      if ($("sig-table")) renderSignals();
       buildCharts();
       setupRanges();
       window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", buildCharts);
     })
     .catch((e) => {
-      $("updated").textContent = "데이터를 불러오지 못했습니다 (" + e.message + ").";
+      if ($("updated")) $("updated").textContent = "데이터를 불러오지 못했습니다 (" + e.message + ").";
     });
 
   // ---------- status ----------
@@ -234,70 +243,140 @@
   }
 
   function applyView() {
-    const r = view.mode === "zoom" ? view.zoom : rangeFor(view.mode === "full" ? "all" : view.homeKey);
-    charts.forEach((c) => c.setScale("x", r));
+    const z = zoomNow();
+    if (!z && view.mode === "zoom") view.mode = view.prev;
+    const r = z ? z.x : rangeFor(view.mode === "full" ? "all" : view.homeKey);
+    charts.forEach((c) => c.setScale("x", { min: r.min, max: r.max }));
     const pressed = view.mode === "full" ? "all" : view.mode === "home" ? view.homeKey : null;
     document.querySelectorAll(".ranges button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.range === pressed)));
     const hint = $("view-hint");
-    if (hint) hint.textContent = view.mode === "zoom" ? "확대 중입니다. 더블클릭하면 확대 전 화면으로 돌아갑니다." : "";
+    if (hint) {
+      const back = OPT.undo === "step" && view.stack.length > 1 ? "한 단계 전 화면" : "확대 전 화면";
+      hint.textContent = z ? "확대 중입니다" + (view.stack.length > 1 ? " (" + view.stack.length + "단계)" : "") + ". 더블클릭하면 " + back + "으로 돌아갑니다." : "";
+    }
   }
+
+  // leave any zoom (used by the preview page when its options change)
+  window.AASI_resetZoom = () => {
+    if (view.mode === "zoom") {
+      view.stack = [];
+      view.mode = view.prev;
+      applyView();
+    }
+  };
 
   function onDoubleClick() {
-    if (view.mode === "zoom") view.mode = view.prev;
-    else view.mode = view.mode === "home" ? "full" : "home";
+    if (view.mode === "zoom") {
+      if (OPT.undo === "step" && view.stack.length > 1) view.stack.pop();
+      else {
+        view.stack = [];
+        view.mode = view.prev;
+      }
+    } else view.mode = view.mode === "home" ? "full" : "home";
     applyView();
   }
 
-  function zoomTo(min, max) {
-    if (max - min < 3 * DAY) return; // too narrow to be useful
-    if (view.mode !== "zoom") view.prev = view.mode;
+  // kind: "x" = dates only, "y" = values only, "xy" = both. b = box in CSS px inside the plot area.
+  function zoomBox(u, kind, b) {
+    const cur = zoomNow();
+    const next = {
+      x: { min: u.scales.x.min, max: u.scales.x.max },
+      y: cur ? cur.y : null,
+      price: cur ? cur.price : null,
+    };
+    if (kind !== "y") {
+      const min = u.posToVal(b.left, "x"), max = u.posToVal(b.left + b.width, "x");
+      if (max - min < 3 * DAY) return; // too narrow to be useful
+      next.x = { min, max };
+    }
+    if (kind !== "x") {
+      const H = u.over.clientHeight;
+      let keys = ["y", "price"];
+      if (OPT.axes === "region") {
+        const top = b.top / H, bottom = (b.top + b.height) / H;
+        if (bottom <= 0.55) keys = ["price"]; // box in the upper (price) part
+        else if (top >= 0.45) keys = ["y"]; // box in the lower (change-rate) part
+      }
+      for (const k of keys) next[k] = { min: u.posToVal(b.top + b.height, k), max: u.posToVal(b.top, k) };
+    }
+    if (view.mode !== "zoom") {
+      view.prev = view.mode;
+      view.stack = [];
+    }
     view.mode = "zoom";
-    view.zoom = { min, max };
+    view.stack.push(next);
     applyView();
   }
 
-  // Drag (single press, or the second press of a double-click): pick a range, release to zoom.
-  // Double-click without dragging: toggle selected period <-> full history,
-  // or, while zoomed, go back to the view the zoom started from.
-  const DBL_MS = 500, DBL_PX = 16, DRAG_PX = 6;
+  // Drag (single press, or the second press of a double-click): pick a box, release to zoom.
+  // Double-click without dragging: see onDoubleClick.
+  const DBL_MS = 500, DBL_PX = 16, DRAG_PX = 6, MIN_1D = 20;
   let lastClick = { t: 0, x: 0, y: 0 };
+
+  function dragKind(dx, dy, pointerType) {
+    if (pointerType === "touch") return "x"; // vertical swipes keep scrolling the page
+    if (OPT.dir === "box") return dy < DRAG_PX ? "x" : dx < DRAG_PX ? "y" : "xy";
+    if (dx < MIN_1D && dy < MIN_1D) return dx >= dy ? "x" : "y";
+    if (dy < MIN_1D) return "x";
+    if (dx < MIN_1D) return "y";
+    return "xy";
+  }
 
   function attachGestures(u) {
     const over = u.over;
+    const sel = el("div", "zsel");
+    ["tl", "tr", "bl", "br"].forEach((c) => sel.append(el("span", "c " + c)));
+    over.append(sel);
     let down = null;
     const pos = (e) => {
       const r = over.getBoundingClientRect();
-      return { x: Math.min(Math.max(e.clientX - r.left, 0), over.clientWidth), y: e.clientY - r.top };
+      return {
+        x: Math.min(Math.max(e.clientX - r.left, 0), over.clientWidth),
+        y: Math.min(Math.max(e.clientY - r.top, 0), over.clientHeight),
+      };
     };
-    const clearSel = () => charts.forEach((c) => c.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false));
+    const boxOf = (d, p, kind) => {
+      const W = over.clientWidth, H = over.clientHeight;
+      return {
+        left: kind === "y" ? 0 : Math.min(d.x, p.x),
+        width: kind === "y" ? W : Math.abs(p.x - d.x),
+        top: kind === "x" ? 0 : Math.min(d.y, p.y),
+        height: kind === "x" ? H : Math.abs(p.y - d.y),
+      };
+    };
 
     over.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       const p = pos(e);
       const second = e.timeStamp - lastClick.t < DBL_MS && Math.abs(p.x - lastClick.x) < DBL_PX && Math.abs(p.y - lastClick.y) < DBL_PX;
-      down = { x: p.x, y: p.y, second, moved: false };
+      down = { x: p.x, y: p.y, second, moved: false, type: e.pointerType };
       e.preventDefault(); // no text selection while dragging
       over.setPointerCapture(e.pointerId);
     });
     over.addEventListener("pointermove", (e) => {
       if (!down) return;
       const p = pos(e);
-      if (Math.abs(p.x - down.x) > DRAG_PX) down.moved = true;
-      if (down.moved) {
-        const left = Math.min(down.x, p.x), width = Math.abs(p.x - down.x);
-        charts.forEach((c) => c.setSelect({ left, width, top: 0, height: c.over.clientHeight }, false));
-      }
+      const dx = Math.abs(p.x - down.x), dy = Math.abs(p.y - down.y);
+      if (dx > DRAG_PX || (dy > DRAG_PX && down.type !== "touch")) down.moved = true;
+      if (!down.moved) return;
+      const kind = dragKind(dx, dy, down.type);
+      const b = boxOf(down, p, kind);
+      sel.className = "zsel k" + kind;
+      Object.assign(sel.style, { display: "block", left: b.left + "px", top: b.top + "px", width: b.width + "px", height: b.height + "px" });
+      over.classList.add("dragging");
     });
     const finish = (e, cancelled) => {
       if (!down) return;
       const d = down;
       down = null;
-      clearSel();
+      sel.style.display = "none";
+      over.classList.remove("dragging");
       if (cancelled) return;
       const p = pos(e);
       if (d.moved) {
         lastClick.t = 0;
-        zoomTo(u.posToVal(Math.min(d.x, p.x), "x"), u.posToVal(Math.max(d.x, p.x), "x"));
+        const kind = dragKind(Math.abs(p.x - d.x), Math.abs(p.y - d.y), d.type);
+        zoomBox(u, kind, boxOf(d, p, kind));
       } else if (d.second) {
         lastClick.t = 0;
         onDoubleClick();
@@ -312,6 +391,14 @@
   // log ticks with round values: wide ranges 1-3-10, medium 1-2-5, narrow finer steps
   function logSplits(min, max, maxTicks) {
     const decades = Math.log10(max / min);
+    if (decades < 0.35) {
+      // narrow zoom: plain round numbers
+      const raw = (max - min) / maxTicks, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+      const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => (max - min) / s <= maxTicks) || 10 * mag;
+      const out = [];
+      for (let v = Math.ceil(min / step) * step; v <= max; v += step) out.push(v);
+      return out;
+    }
     const pick = (mants) => {
       const out = [];
       for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++)
@@ -326,7 +413,8 @@
     const step = Math.ceil(out.length / maxTicks);
     return out.filter((_, i) => i % step === 0);
   }
-  const usdShort = (v) => (v >= 1e6 ? "$" + +(v / 1e6).toFixed(1) + "M" : v >= 1000 ? "$" + nf0.format(v / 1000) + "k" : "$" + nf0.format(v));
+  const usdShort = (v) =>
+    v >= 1e6 ? "$" + +(v / 1e6).toFixed(2) + "M" : v >= 1000 ? "$" + +(v / 1000).toFixed(1) + "k" : v >= 10 ? "$" + nf0.format(v) : "$" + +v.toFixed(2);
 
   function buildCharts() {
     charts.forEach((c) => c.destroy());
@@ -362,12 +450,16 @@
     // Layout like the original chart: the change-rate lines fill the lower part,
     // the BTC price (log) the upper part. Ranges follow the visible period.
     const pctRange = (u, min, max) => {
+      const z = zoomNow();
+      if (z && z.y) return [z.y.min, z.y.max];
       if (min == null || max == null) return [-0.5, 1];
       const R = Math.max(max - min, 0.05) / PCT_TOP;
       const lo = min - 0.03 * R;
       return [lo, lo + R];
     };
     const priceRange = (u, min, max) => {
+      const z = zoomNow();
+      if (z && z.price) return [z.price.min, z.price.max];
       if (!(min > 0) || !(max > 0)) return [1, 10];
       const lmin = Math.log10(min), lmax = Math.log10(max);
       const R = Math.max(lmax - lmin, 0.15) / (0.95 - PRICE_BOTTOM);
@@ -396,14 +488,18 @@
             grid: { show: true, stroke: C.grid, width: 1 },
             // ticks and grid only in the lower part where the change-rate lines live
             splits: (u, ax, min, max) => {
-              const lim = min + PCT_TOP * (max - min);
+              const z = zoomNow();
+              const lim = z && z.y ? max : min + PCT_TOP * (max - min);
               const want = narrow() ? 4 : 6;
-              const step = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2].find((s) => (lim - min) / s <= want) || 5;
+              const step = [0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2].find((s) => (lim - min) / s <= want) || 5;
               const out = [];
               for (let v = Math.ceil(min / step) * step; v <= lim + 1e-9; v += step) out.push(+v.toFixed(4));
               return out;
             },
-            values: (u, vs) => vs.map((v) => Math.round(v * 100) + "%"),
+            values: (u, vs) => {
+              const step = vs.length > 1 ? Math.abs(vs[1] - vs[0]) : 1;
+              return vs.map((v) => (v * 100).toFixed(step < 0.01 ? 1 : 0) + "%");
+            },
           }),
           Object.assign({}, axisBase, {
             scale: "price",
@@ -412,6 +508,8 @@
             filter: (u, splits) => splits, // keep every label (uPlot thins log-axis labels by default)
             // label only the upper band of the chart where the price line lives
             splits: (u, ax, min, max) => {
+              const z = zoomNow();
+              if (z && z.price) return logSplits(min, max, narrow() ? 4 : 7);
               const lmin = Math.log10(min), lmax = Math.log10(max);
               return logSplits(Math.pow(10, lmin + (PRICE_BOTTOM - 0.06) * (lmax - lmin)), max, narrow() ? 4 : 5);
             },
@@ -461,6 +559,7 @@
     document.querySelectorAll(".ranges button").forEach((b) =>
       b.addEventListener("click", () => {
         const k = b.dataset.range;
+        view.stack = [];
         if (k === "all") view.mode = "full";
         else {
           view.homeKey = k;
